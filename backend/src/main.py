@@ -1,27 +1,18 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from supabase import create_client, Client
 from typing import List, Optional
 import os
 from datetime import datetime
 from pydantic import BaseModel
 
-# Models
-class TravelPackage(BaseModel):
-    id: Optional[int]
-    title: str
-    description: str
-    destination: str
-    price: float
-    duration: int
-    created_at: Optional[datetime]
+from src.config.supabase_client import SupabaseConfig
+from src.models.database_models import TravelPackage, Customer
 
-class Customer(BaseModel):
-    id: Optional[int]
-    name: str
-    email: str
-    preferences: dict
-    agent_id: int
+from src.repositories.supabase_repository import SupabaseRepository
 
 app = FastAPI()
 
@@ -34,32 +25,45 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Supabase client
-supabase_url = os.getenv("SUPABASE_URL")
-supabase_key = os.getenv("SUPABASE_KEY")
-supabase: Client = create_client(supabase_url, supabase_key)
+# Get Supabase client
+supabase_config = SupabaseConfig()
 
 # Dependencies
-async def get_supabase():
-    return supabase
+def get_repository():
+    return SupabaseRepository()
 
-# Routes
+@app.get("/")
+async def root():
+    return {"message": "TBO Travel Agent API is running"}
+
 @app.get("/packages/", response_model=List[TravelPackage])
-async def get_packages(supabase: Client = Depends(get_supabase)):
-    response = supabase.table("packages").select("*").execute()
-    return response.data
+async def get_packages(repo: SupabaseRepository = Depends(get_repository)):
+    try:
+        return await repo.get_travel_packages()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/packages/", response_model=TravelPackage)
-async def create_package(package: TravelPackage, supabase: Client = Depends(get_supabase)):
-    response = supabase.table("packages").insert(package.dict(exclude={'id'})).execute()
-    return response.data[0]
+async def create_package(
+    package: TravelPackage, 
+    repo: SupabaseRepository = Depends(get_repository)
+):
+    try:
+        return await repo.create_package(package.dict())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/customers/", response_model=List[Customer])
-async def get_customers(agent_id: int, supabase: Client = Depends(get_supabase)):
-    response = supabase.table("customers").select("*").eq("agent_id", agent_id).execute()
-    return response.data
+async def get_customers(
+    agent_id: str,
+    repo: SupabaseRepository = Depends(get_repository)
+):
+    try:
+        return await repo.get_customers_by_agent(agent_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/customers/", response_model=Customer)
-async def create_customer(customer: Customer, supabase: Client = Depends(get_supabase)):
-    response = supabase.table("customers").insert(customer.dict(exclude={'id'})).execute()
-    return response.data[0]
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    

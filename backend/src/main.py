@@ -8,7 +8,7 @@ from typing import List, Optional
 import os
 from datetime import datetime
 from pydantic import BaseModel
-
+ 
 from src.config.supabase_client import SupabaseConfig
 from src.models.database_models import TravelPackage, Customer
 
